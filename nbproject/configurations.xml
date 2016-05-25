@@ -9,7 +9,7 @@
       <itemPath>main.h</itemPath>
       <itemPath>timerOne.h</itemPath>
       <itemPath>usbSerial.h</itemPath>
-      <itemPath>can_structs.h</itemPath>
+      <itemPath>CANOpen_defines.h</itemPath>
     </logicalFolder>
     <logicalFolder name="LinkerScript"
                    displayName="Linker Files"
@@ -203,6 +203,7 @@
         <property key="UART5" value="false"/>
         <property key="UART6" value="false"/>
         <property key="USB" value="false"/>
+        <property key="firmware.download.all" value="false"/>
         <property key="hwtoolclock.frcindebug" value="false"/>
         <property key="memories.aux" value="false"/>
         <property key="memories.bootflash" value="true"/>

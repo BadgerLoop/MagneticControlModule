@@ -1,8 +1,8 @@
 #include <xc.h>
 #include <sys/kmem.h>
 #include "main.h"
-#include "can_structs.h"
 #include <stdbool.h>
+//#include "CANOpen_defines.h"
 
 static volatile unsigned int fifos[(FIFO_0_SIZE + FIFO_1_SIZE) * MB_SIZE];
 int errors = 0;
@@ -72,12 +72,11 @@ int checkCANError(void) {
 }
 
 static int heartbeatsTotal = 0;
-#define CO_PA_TO_KVA1(pa)	((void *) ((pa) | 0xa0000000))
-#define CAN_REG(base, offset) (*((volatile uint32_t *) ((base) + _CAN1_BASE_ADDRESS + (offset))))
 
 void canHeartbeat(void) {
     char buffer[100];
-    CO_CANtx_t *txBuffer = NULL;
+    unsigned int *addr;
+    //CO_CANtx_t *txBuffer = NULL;
     YELLOW1 = 1;
     delay(500);
     /* The heartbeat message is identified by a 
@@ -85,15 +84,17 @@ void canHeartbeat(void) {
      * first data byte is equal to 1110.*/ 
     int heartbeat = 0; //binary - 1110 0000 0000 0000
     
-    //txBuffer = (CO_CANtx_t *)PA_TO_KVA1(C1FIFOUA1);
-    txBuffer = (CO_CANtx_t *)CO_PA_TO_KVA1(CAN_REG(0, 0x370+0x40));
-    //txBuffer = &txArray;
+    //txBuffer = PA_TO_KVA1(C1FIFOUA1);
+    addr = PA_TO_KVA1(C1FIFOUA1);
+    //txBuffer  = PA_TO_KVA1(C1FIFOUA1);
+    //addr = CO_PA_TO_KVA1(CAN_REG(0, 0x370+0x40));
     switch (EMAC1SA0) {
         case MAC1:
             println("MAC1");
-            //C1RXF0bits.SID = 0x01 & 0x07FF;
-            //addr[0] = 0x701; // Heartbeat | NodeID = 1
-            txBuffer->CMSGSID = 0x701 & 0x07FF;
+            //C1RXF0bits.SID = 0x701 & 0x07FF;
+            addr[0] = 0x701;
+            //addr[0] = 0x701 & 0x07FF; // Heartbeat | NodeID = 1
+            //txBuffer->CMSGSID = 0x701 & 0x07FF;
             break;
         case MAC2:
             println("MAC2");
@@ -104,11 +105,12 @@ void canHeartbeat(void) {
             println("MAC Address did not match.");
             break;
     }
-    //addr[1] = 8; // only DLC field must be set, 4 bytes
-    int rtr = 0;
-    txBuffer->CMSGEID = (1 & 0xF) | (rtr?0x0200:0);
-    txBuffer->data[0] = 0;
-    txBuffer->syncFlag = 0;
+    addr[1] = 1; // only DLC field must be set, 4 bytes
+    addr[2] = 0b1110;
+    /* int rtr = 1;
+    txBuffer->CMSGEID = (4 & 0xF) | (rtr?0x0200:0);
+    txBuffer->data[0] = 0b1110;
+    txBuffer->syncFlag = 1; // */
     C1FIFOCON1SET = 0x2000;             // setting UINC bit tells fifo to increment counter
     C1FIFOCON1bits.TXREQ = 1;           // request that data from the queue be sent
     errors = checkCANError();
@@ -152,9 +154,10 @@ void canInit(void) {
     C1FLTCON0bits.FLTEN0 = 1;               // enable filter 0
     // SKIP BAUD LOOPBACK ONLY
     
+    // {4,   TQ_x_16},   /*CAN=500kbps*/
     // {2,   TQ_x_16}    /*CAN=1000kbps*/
     /* Structure contains timing coefficients for CAN module.
-     * // TQ_x_16   1, 5, 8, 2  // good timing (1000kpbs for 64MHz clock)
+     * // TQ_x_16   1, 5, 8, 2  // good timing
      * CAN baud rate is calculated from following equations:
      * Fsys                                - System clock (MAX 80MHz for PIC32MX)
      * TQ = 2 * BRP / Fsys                 - Time Quanta
@@ -162,12 +165,12 @@ void canInit(void) {
      * K = SJW + PROP + PhSeg1 + PhSeg2    - Number of Time Quantas
      */
     
-    //Set bitrate to 1000kbps
-    C1CFGbits.BRP = (2 - 1); //BRP
-    C1CFGbits.SJW = (1 - 1); //SJW
-    C1CFGbits.PRSEG = (5 - 1); //PROP
-    C1CFGbits.SEG1PH = (8 - 1); //PhSeg1
-    C1CFGbits.SEG2PH = (2 - 1); //PhSeg2 */
+    //Set bitrate to 500kbps
+    C1CFGbits.BRP = 7; //BRP
+    C1CFGbits.PRSEG = 2; //PROP
+    C1CFGbits.SEG1PH = 1; //PhSeg1
+    C1CFGbits.SEG2PH = 1; //PhSeg2
+    C1CFGbits.SJW = 0; //SJW */
     
     //Set Initial SID to 0x146
     C1RXF0bits.SID = SID1;
@@ -266,11 +269,46 @@ void canInit(void) {
     RED1 = 0;
 }
 
+void receiveCANMessage() {
+    char buffer[100];
+    unsigned int *addr;
+    if (C1FIFOINT0bits.RXNEMPTYIF) {
+        RED2 = 0;
+        addr = PA_TO_KVA1(C1FIFOUA0);       // get the VA of current pointer to RX FIFO
+        sprintf(buffer, "Received %d with SID = 0x%x", addr[2], addr[0] & 0x7FF);
+        println(buffer);
+        changeLED(addr[2], 1);
+        delay(1000);
+        changeLED(addr[2], 0);
+        C1FIFOCON0SET = 0x2000;
+    }
+    else RED2 = 1;
+    GREEN1 = 1;
+    delay(1000);
+    GREEN1 = 0;
+    delay(1000);
+    errors = checkCANError();
+    if (errors != 0) {
+        sprintf(buffer, "Errors: %d", errors);
+        println(buffer);
+        delay(1000);
+    }
+}
 int main(void) {
     initializers();
     canInit();
     printMAC();
     while (1) {
         canHeartbeat();
+        switch (EMAC1SA0) {
+            case MAC1:
+                canHeartbeat();
+                break;
+            case MAC2:
+                receiveCANMessage();
+                break;
+            default:
+                break;
+        }
     }
 }
