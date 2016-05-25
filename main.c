@@ -121,13 +121,14 @@ void canHeartbeat(void) {
             println("MAC1");
             //C1RXF0bits.SID = 0x701 & 0x07FF;
             //addr[0] = 0x701;
-            //addr[0] = 0x701 & 0x07FF; // Heartbeat | NodeID = 1
-            txBuffer->CMSGSID = 0x701 & 0x07FF;
+            //addr[0] = 0x701 & 0x07FF;
+            txBuffer->CMSGSID = 0x701 & 0x07FF; // Heartbeat | NodeID = 1
             break;
         case MAC2:
             println("MAC2");
+            txBuffer->CMSGSID = 0x702 & 0x07FF; // Heartbeat | NodeID = 2
             //C1RXF0bits.SID = 0x146;
-            //addr[0] = 0x702; // Heartbeat | NodeID = 2
+            //addr[0] = 0x702;
             break;
         default:
             println("MAC Address did not match.");
@@ -135,8 +136,11 @@ void canHeartbeat(void) {
     }
     //addr[1] = 1; // only DLC field must be set, 4 bytes
     //addr[2] = 0b1110;
-    int rtr = 1;
-    txBuffer->CMSGEID = (1 & 0xF) | (rtr?0x0200:0);
+    unsigned int rtr = 1;
+    unsigned int dlc = 1;
+    txBuffer->CMSGEID = (dlc & 0xF) | (rtr?0x0200:0); //set DLC and RTR
+    // Set first byte of data field to 0b1110
+    // in accordance with CANOpen protocol specification
     txBuffer->data[0] = 0b1110;
     txBuffer->syncFlag = 1; // */
     C1FIFOCON1SET = 0x2000;             // setting UINC bit tells fifo to increment counter
@@ -200,7 +204,7 @@ void canInit(void) {
     C1CFGbits.SEG2PH = 1; //PhSeg2
     C1CFGbits.SJW = 0; //SJW */
     
-    //Set Initial SID to 0x146
+    //Set Initial SID to 0x146; just to give SID not default value
     C1RXF0bits.SID = SID1;
     
     /* switch (EMAC1SA0) {
@@ -219,8 +223,8 @@ void canInit(void) {
             break;
     } */
     
-    C1CONbits.REQOP = 0;                    // request loopback mode
-    while (C1CONbits.OPMOD != 0);           // wait for loopback mode
+    C1CONbits.REQOP = 0;                    // request normal mode
+    while (C1CONbits.OPMOD != 0);           // wait for normal mode
     
     /* RED1 = 1;
     while(!readButton());
@@ -322,6 +326,44 @@ void receiveCANMessage() {
         delay(1000);
     }
 }
+/* Controls team TODOs are below */
+
+/* function to be called asynchronously using interrupts */
+void canAsync(void) {
+    //TODO: Complete async interrupt call implementation
+}
+
+/* function to be called every 1ms using interrupts */
+void can1000ms(void) {
+    //TODO: Complete interrupt call implementation
+    updateCANModuleVar();
+    canHeartbeat();
+}
+
+#ifndef USE_EXTERNAL_TIMER_1MS_INTERRUPT
+unsigned int counter100ms = 0;
+unsigned int counter1000ms = 0;
+void __ISR(_TIMER_2_VECTOR, IPL3SOFT) TimerInterruptHandler(void){
+    //Increment timer counters
+    counter100ms++;
+    counter1000ms++;
+    
+    //100ms timer
+    if (counter100ms == 100)
+    {
+        //Put functions to be called every 100ms here
+        counter100ms = 0;
+    }
+    //1000ms timer
+    if (counter1000ms == 1000)
+    {
+        //Put functions to be called every 1000ms here
+        can1000ms();
+        counter1000ms = 0;
+    }
+    
+}
+
 int main(void) {
     initializers();
     canInit();

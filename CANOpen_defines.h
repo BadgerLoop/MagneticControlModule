@@ -1,5 +1,5 @@
 #include <stdbool.h>
-#define CO_PA_TO_KVA1(pa)	((void *) ((pa) | 0xa0000000))
+#define CPA_TO_KVAO_PA_TO_KVA1(pa)	((void *) ((pa) | 0xa0000000))
 #define CAN_REG(base, offset) (*((volatile uint32_t *) ((base) + _CAN1_BASE_ADDRESS + (offset))))
     #define C_CON        0x000                         /* Control Register */
     #define C_CFG        0x010                         /* Baud Rate Configuration Register */
