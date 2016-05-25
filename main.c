@@ -210,6 +210,7 @@ void canInit(void) {
 
 int main(void) {
     initializers();
+    canInit();
     printMAC();
     while (1) {
         canHeartbeat();
