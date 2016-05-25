@@ -21,6 +21,8 @@
 #pragma config UPLLEN = ON          // USB clock uses PLL
 #pragma config UPLLIDIV = DIV_2     // Divide 8 MHz input by 2, mult by 12 for 48 MHz
 
+#pragma config FCANIO = OFF
+
 #define MAC1    0xA7B5
 #define MAC2    0xFFC
 #define MAC3    0x50BE
