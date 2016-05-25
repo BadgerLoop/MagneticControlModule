@@ -2,7 +2,7 @@
 #include <sys/kmem.h>
 #include "main.h"
 #include <stdbool.h>
-//#include "CANOpen_defines.h"
+#include "CANOpen_defines.h"
 
 static volatile unsigned int fifos[(FIFO_0_SIZE + FIFO_1_SIZE) * MB_SIZE];
 int errors = 0;
@@ -14,6 +14,7 @@ void initializers(void) {
     initLEDs();
     initTimer1();
     beginSerial();
+    createCANModuleVar();
 }
 
 int getBoardNumber(void) {
@@ -72,11 +73,38 @@ int checkCANError(void) {
 }
 
 static int heartbeatsTotal = 0;
+static CO_CANmodule_t *canModule;
+
+void createCANModuleVar(void)
+{
+    unsigned int canModuleMmap[sizeof(CO_CANmodule_t)];
+    canModule = canModuleMmap;
+    updateCANModuleVar();
+}
+
+void updateCANModuleVar(void) {
+    //CO_CANrxMsg_t *rxMessageBuffer = malloc(sizeof(CO_CANrxMsg_t *));
+    
+    canModule->CANbaseAddress = 0;
+    //canModule->CANmsgBuff = ?;
+    canModule->CANmsgBuffSize = 33;/* PIC32 specific: Size of the above buffer == 33. Take care initial value! */
+    //canModule->rxArray = (CO_CANrxMsg_t*) CO_PA_TO_KVA1(CAN_REG(CANmodule->CANbaseAddress, C_FIFOUA));
+    //canModule->rxSize = ?
+    canModule->txArray = CO_PA_TO_KVA1(CAN_REG(0, C_FIFOUA+0x40));
+    canModule->txSize = sizeof(canModule->txArray);
+    canModule->CANnormal = checkCANError();
+    canModule->useCANrxFilters = false;
+    canModule->bufferInhibitFlag = false;
+    canModule->firstCANtxMessage = false;
+    canModule->CANtxCount = heartbeatsTotal + 0;
+    canModule->errOld = 0;
+    //canModule->em = ?
+}
 
 void canHeartbeat(void) {
     char buffer[100];
     unsigned int *addr;
-    //CO_CANtx_t *txBuffer = NULL;
+    CO_CANtx_t *txBuffer = NULL;
     YELLOW1 = 1;
     delay(500);
     /* The heartbeat message is identified by a 
@@ -85,16 +113,16 @@ void canHeartbeat(void) {
     int heartbeat = 0; //binary - 1110 0000 0000 0000
     
     //txBuffer = PA_TO_KVA1(C1FIFOUA1);
-    addr = PA_TO_KVA1(C1FIFOUA1);
+    //addr = PA_TO_KVA1(C1FIFOUA1);
     //txBuffer  = PA_TO_KVA1(C1FIFOUA1);
-    //addr = CO_PA_TO_KVA1(CAN_REG(0, 0x370+0x40));
+    txBuffer = &canModule->txArray[0];
     switch (EMAC1SA0) {
         case MAC1:
             println("MAC1");
             //C1RXF0bits.SID = 0x701 & 0x07FF;
-            addr[0] = 0x701;
+            //addr[0] = 0x701;
             //addr[0] = 0x701 & 0x07FF; // Heartbeat | NodeID = 1
-            //txBuffer->CMSGSID = 0x701 & 0x07FF;
+            txBuffer->CMSGSID = 0x701 & 0x07FF;
             break;
         case MAC2:
             println("MAC2");
@@ -105,10 +133,10 @@ void canHeartbeat(void) {
             println("MAC Address did not match.");
             break;
     }
-    addr[1] = 1; // only DLC field must be set, 4 bytes
-    addr[2] = 0b1110;
-    /* int rtr = 1;
-    txBuffer->CMSGEID = (4 & 0xF) | (rtr?0x0200:0);
+    //addr[1] = 1; // only DLC field must be set, 4 bytes
+    //addr[2] = 0b1110;
+    int rtr = 1;
+    txBuffer->CMSGEID = (1 & 0xF) | (rtr?0x0200:0);
     txBuffer->data[0] = 0b1110;
     txBuffer->syncFlag = 1; // */
     C1FIFOCON1SET = 0x2000;             // setting UINC bit tells fifo to increment counter
@@ -299,7 +327,7 @@ int main(void) {
     canInit();
     printMAC();
     while (1) {
-        canHeartbeat();
+        updateCANModuleVar();
         switch (EMAC1SA0) {
             case MAC1:
                 canHeartbeat();
